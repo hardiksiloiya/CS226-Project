@@ -26,7 +26,7 @@ architecture load_tester of load_testbench is
 
 
 	signal clk : std_logic ;
-	signal instr : std_logic_vector (15 downto 0) := "0110001000000000"  ;
+	signal instr : std_logic_vector (15 downto 0) := "0111001000000000"  ;
 																	-- ADI : "0001,101,110,010101" ;
 																	-- SW  : "0101,110,111,000001" ;
 																	-- ADD : "0000,010,111,000,000" ;
@@ -141,6 +141,72 @@ architecture load_tester of load_testbench is
 	wait for 50 ns ;
 
 	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	wait for 50 ns ;
+	
+	clk <= '0';
+	
+	wait for 50 ns ;
+
+	clk <= '1' ;
+	
+	instr <= "0000010111000000" ;
 	
 	wait for 50 ns ;
 	
