@@ -10,8 +10,9 @@ use ieee.std_logic_unsigned.all;
 
 entity cpu_load is 
 	port (clk : in std_logic; instr : in std_logic_vector (15 downto 0);
-	output,t1_out,t2_out,t3_out,D1_out,D2_out,D3_out : out std_logic_vector (15 downto 0) ;
-	A1_out,A2_out,A3_out :  out std_logic_vector ( 2 downto 0 )) ;
+	output,t1_out,t2_out,t3_out,D1_out,D2_out,D3_out,PC_out,address_out,data_in_out,data_out_out : out std_logic_vector (15 downto 0) ;
+	A1_out,A2_out,A3_out :  out std_logic_vector ( 2 downto 0 );
+	rf_write_out,mem_write_out : out std_logic ) ;
 end entity ;
 
 --output is for debugging
@@ -42,6 +43,24 @@ architecture load of cpu_load is
 	component extender_6bit is
 	port ( inp : in std_logic_vector ( 5 downto 0) ; output : out std_logic_vector (15 downto 0)) ;	
 	end component ;
+
+	
+	component nand_16bit is
+	port(a,b: in std_logic_vector(15 downto 0);
+		c: out std_logic_vector(15 downto 0));	
+	end component ;
+	
+	
+	component extender_9bit is
+	port ( a : in std_logic_vector (8 downto 0) ; output : out std_logic_vector (15 downto 0)  ) ;
+	end component ;
+	
+	component extender_9bit_signed is
+	
+	port (a : in std_logic_vector (8 downto 0) ; output : out std_logic_vector (15 downto 0)) ;	
+	end component ;
+	
+	
 	
 	
 	
@@ -49,12 +68,13 @@ architecture load of cpu_load is
 	signal rf_write,mem_write : std_logic := '0' ;
 	signal A1,A2,A3 : std_logic_vector (2 downto 0) ;
 	
-	signal t1,t2,t3,t5,t6 : std_logic_vector (15 downto 0) ;
+	signal t1,t2,t3,t5,t6,t1n,nand_in1,nand_in2,nand_out , e9_out,next_addr,e9s_out : std_logic_vector (15 downto 0) ;
 	signal t4 : std_logic_vector(5 downto 0) ;
 	signal alu_parity : std_logic := '0' ;
+	signal  e9_in : std_logic_vector (8 downto 0);
+	signal PC : std_logic_vector (15 downto 0) := "0000000000000000" ;
 
-
-	type state is (S0,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16);
+	type state is (S0,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16,S17,S18,S19,S20,S21,S22,S23,S24,S25,S26,S27,S28,S29,S30,S31,S32,S33,S34,S35,S36,S37,S38,S39,S40);
 	
 	signal curr_state : state := S0 ;
 	
@@ -66,17 +86,32 @@ architecture load of cpu_load is
 	memory_RF : RF port map ( A1 => A1, A2 => A2, A3 => A3, D3 => D3,D1 => D1, D2 => D2,rf_write => rf_write,clk => clk);
 	
 	ALU : adder_16bit port map (a => t1, b => t2, cin => alu_parity, sum => t3 ) ;
+
+	Nander : nand_16bit port map (a=> nand_in1,b=> nand_in2, c=> nand_out) ;
+	
+	ALU_2 : adder_16bit port map (a=> t1n, b => "0000000000000001", cin => '0'  , sum => next_addr ) ;
+
+	extender : extender_6bit port map ( inp => t4 ,output => t5 ) ;
+	
+	extender_9bit_1 : extender_9bit port map ( a => e9_in, output => e9_out) ;
+	
+	extender_9bit_2 : extender_9bit_signed port map (a => e9_in, output => e9s_out ) ;
 	
 	t1_out <= t1;
 	t2_out <= t2;
 	t3_out <= t3;
-	extender : extender_6bit port map ( inp => t4 ,output => t5 ) ;
 	A1_out <= A1 ;
 	A2_out <= A2 ;
 	A3_out <= A3 ;
 	D1_out <= D1 ;
 	D2_out <= D2 ;
 	D3_out <= D3 ;
+	PC_out <= PC ;
+	rf_write_out <= rf_write ;
+	mem_write_out <= mem_write ;
+	address_out <= address ;
+	data_in_out <= data_in ;
+	data_out_out <= data_out ;
 --	data_in <= D1 ;
 	
 --	A2 <= instr(8 downto 6) ;
@@ -87,8 +122,31 @@ architecture load of cpu_load is
 	
 	variable next_state : state ;
 	
+
+------------opcode map-----------------
+--=========  opcode     opcode name======
+
+------------ 0000       Add 
+
+------------ 0001       ADI
+
+------------ 0010       NDU
+
+------------ 0011       LHI
+
+------------ 0100       LW
+
+------------ 0101       SW
+
+------------ 0110       LA	
 	
-	
+------------ 0111       SA	
+
+------------ 1100       BEQ
+
+------------ 1000       JAL
+
+------------ 1001       JLR
 	begin 
 	
 	
@@ -96,25 +154,176 @@ architecture load of cpu_load is
 		
 		---deciding the operation based on opcode
 			
-			if(instr(15 downto 12) = "0100") then
+			if( instr(15 downto 12) = "0000") then
+			
+			-- ADD operation triggered       S1-S3
+				next_state := S1 ;
+			
+			elsif (instr(15 downto 12) = "0001") then
+			
+				-- ADI operation triggered    S4-S7
+				next_state := S4 ;			
+			
+			elsif (instr(15 downto 12) = "0010") then
+			
+				-- NDU operations triggered    S17-S19 
+				next_state := S17 ;			
+
+			elsif (instr (15 downto 12) = "0011") then
+			
+				-- LHI operation triggered     S20- S21
+				next_state := S20 ;
+	
+
+			elsif(instr(15 downto 12) = "0100") then
 				--
-				-- the load operation triggered 
-				next_state := S7 ;
+				-- the load operation triggered S8-S12
+				next_state := S8 ;            
 				
 
 			
 			elsif (instr(15 downto 12) = "0101" ) then
 			
-				-- the store operations triggered
-				next_state := S12 ;
+				-- the store operations triggered S13-S16
+				next_state := S13 ;
+			
+
+			elsif (instr (15 downto 12) = "0110" ) then
+			
+				-- the load all operation triggered S22-S26
 				
+				next_state := S22 ;
+				
+				D3 <= "1111111111111111" ;
+				
+			elsif (instr (15 downto 12)  = "0111" ) then
+			
+				-- the store all operation triggered S27-S31
+
+				next_state := S27 ;
+				
+			elsif (instr (15 downto 12) = "1100" ) then
+			
+				-- the BEQ operation triggered S32-S33
+				
+				next_state := S32 ;
+			
+			elsif (instr (15 downto 12) = "1000" ) then
+			
+				-- the JAL operation triggered S34-S35
+				
+				next_state  := S34 ;
+			
+			elsif (instr (15 downto 12) = "1001" ) then
+			
+				-- the JLR operation triggered S36-S37
+				
+				next_state := S36  ;
+			
+			else
+				
+				next_state := S0 ;
 
 			end if ;
 			
-----begining of load operation sequence			
-		elsif (curr_state = S7) then
+			
+			
+			if (falling_edge(clk)) then
+			
+				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
+				mem_write <= '0' ;
+			end if ;
+			
+			
+			
+------- begining of ADD operation sequence
+		elsif (curr_state = S1 ) then
+			
+				next_state := S2 ;
+				
+				t1n <= PC ;
+				
+				--next_addr will be ready with next PC
+				
+				
 
-				next_state := S8 ;
+
+		elsif (curr_state = S2) then
+		
+				next_state := S3;
+				PC <= next_addr ;
+				A1 <= instr ( 11 downto 9);
+				A2 <= instr ( 8 downto 6) ;
+				t1 <= D1 ;
+				t2 <= D2 ;			
+
+				alu_parity <= '0' ;
+				
+				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
+				mem_write <= '0' ;				
+				
+				
+			-- now t1, t2 are ready for bein fed to Alu, t3 will be ready at the next cycle
+			
+		elsif (curr_state = S3 ) then
+		
+				next_state := S0;
+				D3 <= t3 ;
+				A3 <= instr (5 downto 3) ;
+				
+				rf_write <= '1' ;
+					
+
+--------end of ADD operation
+		
+-------- begining of ADI operation sequence
+
+		elsif (curr_state = S4) then
+				
+				next_state := S5 ;
+				
+				t1n <= PC ;
+				
+
+		elsif (curr_state = S5)  then
+		
+				next_state := S6 ;
+				PC <= next_addr ;
+				A1 <= instr(11 downto 9);
+				t1 <= D1 ;
+				t4 <= instr(5 downto 0) ;
+				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
+				mem_write <= '0' ;				
+		elsif (curr_state = S6) then
+		
+				next_state := S7;
+				
+				t2 <= t5 ;
+				
+				--now t3 will be ready with the required value
+		elsif (curr_state = S7) then
+				
+				next_state := S0 ;
+				rf_write <= '1' ;
+				A3 <= instr (8 downto 6) ;
+				D3 <= t3 ;
+
+--------end of ADI operation 				
+		
+----begining of load operation sequence		
+
+		elsif (curr_state = S8 ) then
+		
+				next_state := S9 ;
+				
+				t1n <= PC ;
+				
+	
+		elsif (curr_state = S9) then
+
+				next_state := S10 ;
+				
+				PC <= next_addr ;
 				
 				A1 <= instr( 8 downto 6) ;
 				
@@ -124,10 +333,10 @@ architecture load of cpu_load is
 				mem_write <= '0' ;
 			
 			
-		elsif (curr_state = S8) then
+		elsif (curr_state = S10) then
 	
 
-			next_state := S9 ;
+			next_state := S11 ;
 			
 			t4 <= instr( 5 downto 0) ;
 																-- extender in action 
@@ -138,17 +347,17 @@ architecture load of cpu_load is
 			--now t3 contains the required address of main_memory
 
 			
-		elsif (curr_state = S9) then
+		elsif (curr_state = S11) then
 		
 
-			next_state := S10 ;
+			next_state := S12 ;
 			
 			address <= t3 ;
 
 
 
 			
-		elsif (curr_state = S10) then
+		elsif (curr_state = S12) then
 			--now data_out contains the required address
 			next_state := S0;
 		
@@ -162,9 +371,18 @@ architecture load of cpu_load is
 ------end of load operation sequence
 
 ------begining of store operation sequence
-		elsif ( curr_state = S12) then
 
-				next_state := S13 ; 
+		elsif (curr_state = S13 ) then
+			
+			next_state := S14 ;
+			
+			t1n <= PC ;
+
+		elsif ( curr_state = S14) then
+
+				next_state := S15 ; 
+				
+				PC <= next_addr ;
 				
 				A1 <= instr ( 11 downto 9);
 				
@@ -180,9 +398,9 @@ architecture load of cpu_load is
 				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
 				mem_write <= '0' ;
 
-		elsif (curr_state = S13 )  then 
+		elsif (curr_state = S15 )  then 
 
-				next_state := S14 ;
+				next_state := S16 ;
 				
 				t4 <= instr( 5 downto 0) ;   -- extender in action 
 				t2 <= t5 ;
@@ -190,7 +408,7 @@ architecture load of cpu_load is
 			
 			-- now t3 contains the required address of the main memory
 
-		elsif (curr_state = S14) then 
+		elsif (curr_state = S16) then 
 		
 				next_state := S0;
 				
@@ -198,11 +416,343 @@ architecture load of cpu_load is
 				address <= t3 ;
 				data_in <= D1 ;		
 				mem_write <= '1' ;
+				
+---------end of store operation	
+
+--------- begining of NDU operation
+
+		elsif (curr_state = S17 ) then
+		
+				next_state := S18 ;
+				
+				t1n <= PC;
+
+		elsif (curr_state = S18) then
+		
+				next_state := S19 ;
+				PC <= next_addr ;
+				A1 <= instr (11 downto 9);
+				A2 <= instr (8 downto 6) ;
+				nand_in1 <= D1;
+				nand_in2 <= D2;
+				-- nandout will be ready with the required value
+				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
+				mem_write <= '0' ;	
+
+		elsif (curr_state = S19) then
+		
+				next_state := S0;
+				
+				A3 <= instr (5 downto 3) ;
+				D3 <= nand_out ;
+				rf_write <= '1' ;
+			
+-------end of NDU operation			
+
+------- begining of LHI operation
+
+		elsif (curr_state = S20) then
+		
+				next_state := S21 ;
+				
+				t1n <= PC ;
+
+		elsif (curr_state = S21)  then
+		
+				next_state := S0 ;
+				
+				PC <= next_addr ;	
+			
+				e9_in <= instr(8 downto 0) ;
+				
+				D3 <= e9_out ;
+				A3 <= instr (11 downto 9) ;
+				
+				rf_write <='1' ;
+				mem_write <= '0' ;
+
+------- end of LHI operation
+
+-------- begining of load all operation
+	
+		elsif (curr_state = S22 ) then
+		
+			next_state := S23 ;
+			
+			t1n <= PC ;
+		
+		elsif (curr_state = S23) then
+		
+			
+			
+			next_state := S24 ;
+			
+			PC <= next_addr ;
+			
+			A1 <= instr (11 downto 9) ;
+			address <= D1 ;
+			
+			
+			rf_write <= '1';
+			
+			mem_write <= '0' ;
+
+		elsif(curr_state = S24) then
+		
+			next_state := S25 ;
+			
+			A3 <= "000" ;
+			D3 <= data_out ;
+		
+			
+		elsif (curr_state = S25 ) then
+	
+			t1n <= address ;
+			
+			next_state := S26 ;
 			
 
+
+			--next_addr will be ready with next address
+		elsif (curr_state = S26) then
+		
+			
+			
+			address <= next_addr ;
+			
+			D3 <= data_out ;
+			
+			if(falling_edge(clk)) then
+				if ( A3 = "000") then
+			
+				next_state := S25 ;
+				
+				A3 <= "001" ;
+			
+				elsif (A3 = "001") then
+					
+					A3 <= "010" ;
+					
+					next_state := S25 ;
+				
+				elsif (A3 = "010") then
+					
+					A3 <= "011" ;
+					next_state := S25 ;
+				
+				elsif (A3 = "011" )  then
+			
+					A3 <= "100" ;
+					next_state := S25 ;
+					
+				elsif (A3 = "100" ) then
+				
+					A3 <= "101" ;
+					next_state := S25 ;
+					
+				elsif (A3 = "101" ) then
+				
+					A3 <= "110" ;
+					
+					next_state := S25 ;
+					
+				elsif (A3 = "110" ) then
+	
+					A3 <= "111";
+					
+					next_state := S25;
+				elsif (A3 = "111") then
+				
+					A3 <= "000" ;
+					next_state := S0;
+					
+
+				
+				end if ;
+				
+			end if;
+			
+			
+-------- end of load all operations		
+
+
+-------- begining of store all operations
+
+		elsif (curr_state = S27) then
+		
+			next_state := S28 ;
+			
+			t1n <= PC ;
+
+		elsif (curr_state = S28 ) then
+		
+			next_state := S29 ;
+	
+			PC <= next_addr ;
+			
+			A1 <= instr (11 downto 9) ;
+			
+			address <= D1 ;
+			
+			A2 <= "000" ;
+			
+			rf_write <= '0' ;
+			
+		elsif (curr_state = S29) then
+		
+			next_state:= S30 ;
+			
+			mem_write <= '1' ;
+			
+			data_in <= D2 ;
+			
+			
+			
+		elsif (curr_state = S30 ) then
+		
+			next_state := S31 ;
+			
+			t1n <= address ;
+			
+		elsif (curr_state = S31) then
+		
+			address <= next_addr ;
+			
+			if (A2 = "000") then
+				
+				A2 <= "001";
+				
+				next_state := S30 ;
+			
+			elsif (A2 = "010") then
+			
+				A2 <= "011" ;
+				next_state := S30 ;
+				
+			elsif (A2 = "011") then
+			
+				A2 <= "100" ;
+				next_state := S30 ;
+				
+			elsif (A2 = "100") then
+			
+				A2 <= "101" ;
+				next_state := S30 ;
+				
+			elsif (A2 = "101") then
+			
+				A2 <= "110" ;
+				next_state := S30 ;
+				
+			elsif (A2 = "110" ) then
+			
+				A2 <= "111" ;
+				next_state := S30 ;
+				
+			elsif (A2 = "111" ) then
+			
+				next_state := S0 ;
+				
+			end if;
+			
+			
+			data_in <= D2 ;
+			
+------ end of store all operation 
+		
+		
+------- begining of  BEQ operation
+
+		elsif (curr_state = S32 ) then
+		
+		
+			next_state := S33 ;
+			
+			A1 <= instr (11 downto 9 );
+			
+			A2 <= instr ( 8 downto 6 );
+			
+			t4 <= instr ( 5 downto 0 );
+			
+			t1n <= PC ;
+			
+			t2 <= t5 ;
+			
+			t1 <= PC ;
+			
+		elsif ( curr_state = S33 ) then
+	
+			
+			next_state := S0 ;
+			
+			if (D1 = D2 ) then
+			
+				PC <= t3 ;
+			
+			else
+			
+				PC <= next_addr ;
+			
+			end if ;
+			
+------ end of BEQ operation
+
+------ begining of JAL operation
+
+	elsif (curr_state = S34) then
+	
+			next_state := S35 ;
+			
+			e9_in <= instr (8 downto 0 );
+			
+			A3 <= instr (11 downto 9) ;
+			
+			D3 <= PC ;
+			
+			rf_write <= '1' ;
+			
+			t1 <= PC ;
+			
+			t2 <= e9s_out ;
+	
+	
+	elsif ( curr_state = S35 ) then
+	
+			next_state := S0 ;
+			
+			PC <= t3 ;
+			
+------ end of JAL operation 
+
+
+------ begining of JLR operation
+
+
+	elsif (curr_state = S36 ) then
+	
+			next_state := S37 ;
+			
+			A3 <= instr ( 11 downto 9 ) ;
+			
+			D3 <= PC ;
+			
+			rf_write <= '1' ;
+			
+			A2 <= instr (8 downto 6 ) ;
+			
+	elsif (curr_state = S37 ) then
+	
+			next_state := S0 ;
+			
+			PC <=  D2 ;
+			
+			
+------ end of JLR operation			
+		
+		
 		end if ;
 		
-		
+
 		
 		
 		-------------------clock part
