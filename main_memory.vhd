@@ -19,24 +19,26 @@ end entity ;
 architecture main of main_memory is
 
 
-	type memory_array is array (65536 downto 0 ) of std_logic_vector (15 downto 0) ;
+	type memory_array is array (300 downto 0 ) of std_logic_vector (15 downto 0) ;
 	
-	signal Memory : memory_array := (others =>  "0000000000000000" ) ;
+	signal Memory : memory_array := (others => "1111100000000000" )  ;
 	
+ 
 	
 	begin 
 	
 	data_out <= Memory (conv_integer(address)) ;
+
 	
 	process (clk,mem_write,address,data_in)
 	
 	
-	
+
 	begin
 	
 		if(mem_write = '1') then
-			if(rising_edge(clk)) then
-				Memory(conv_integer (address)) <= data_in ;
+			if(rising_edge(clk) ) then
+				Memory(conv_integer(address)) <= data_in  ;
 			end if ;
 		
 		end if ;

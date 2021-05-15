@@ -20,14 +20,21 @@ architecture handler of RF is
 
 	type register_array is array(7 downto 0) of std_logic_vector(15 downto 0) ;
 	
-	signal Memory : register_array := (others => "0000000000000000") ;
+	signal Memory : register_array := ( "0000000000000111",
+	  "0000000000000110",
+	  "0000000000000101",
+	  "0000000000000100" ,
+	  "0000000000000011" ,
+	  "0000000000000010" ,
+	  "0000000000000001" ,
+	  "0000000000000000" ) ;
 
 	begin
 	
 	D1 <= Memory(conv_integer(A1));
 	D2 <= Memory(conv_integer(A2));
 
-
+--	Memory(2) <= "0001100110011010";
 
 	process ( rf_write,A3,D3,clk )
 	
