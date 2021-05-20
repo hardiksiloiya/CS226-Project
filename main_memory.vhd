@@ -21,9 +21,32 @@ architecture main of main_memory is
 
 	type memory_array is array (300 downto 0 ) of std_logic_vector (15 downto 0) ;
 	
-	signal Memory : memory_array := (others => "1111100000000000" )  ;
+	signal Memory : memory_array :=  (
+	0 => "0001101110010101", 1 =>  "0101110111000001" , 2 =>  "0111001000000000" ,
+	others => x"0000" 
+	);
 	
- 
+	
+-- initialize the instruction set over here
+
+
+
+
+
+																	-- ADI : "0001,101,110,010101" ;
+																	-- SW  : "0101,110,111,000001" ;
+																	-- ADD : "0000,010,111,000,000" ;
+																	-- (opcode, source, dest, offset) ;
+																	
+																	-- NDU : "0010,110,101,111,000" ;
+																	-- LW  : "0100,001,111,000001" ; should run after store is performed
+																	-- LA  : "0110,001,000,000000" ; should run after enough SW, or SA are performed 
+																	-- SA  : "0111,001,000,000000" ; should run only after registers having some valid value
+																	-- BEQ : "1100,001,010,000010" ;
+																	-- JAL : "1000,001,000,000010" ; 
+																	-- JLR : "1001,001,010,000000" ;
+
+	
 	
 	begin 
 	

@@ -9,10 +9,10 @@ use ieee.std_logic_unsigned.all;
 
 
 entity cpu_load is 
-	port (clk : in std_logic; instr : in std_logic_vector (15 downto 0);
-	output,t1_out,t2_out,t3_out,D1_out,D2_out,D3_out,PC_out,address_out,data_in_out,data_out_out : out std_logic_vector (15 downto 0) ;
+	port (clk : in std_logic; 
+	instr_out,t1_out,t2_out,t3_out,D1_out,D2_out,D3_out,PC_out,address_out,data_in_out,data_out_out : out std_logic_vector (15 downto 0) ;
 	A1_out,A2_out,A3_out :  out std_logic_vector ( 2 downto 0 );
-	rf_write_out,mem_write_out : out std_logic ) ;
+	c_flag_out,z_flag_out,rf_write_out,mem_write_out : out std_logic ) ;
 end entity ;
 
 --output is for debugging
@@ -22,7 +22,7 @@ architecture load of cpu_load is
 
 
 	component adder_16bit is
-	port( a,b : in std_logic_vector (15 downto 0) ; cin : in std_logic ; sum : out std_logic_vector (15 downto 0) );	
+	port( a,b : in std_logic_vector (15 downto 0) ; cin : in std_logic ; sum : out std_logic_vector (15 downto 0); cout : out std_logic );	
 	end component ;
 
 	component RF is 
@@ -60,23 +60,29 @@ architecture load of cpu_load is
 	port (a : in std_logic_vector (8 downto 0) ; output : out std_logic_vector (15 downto 0)) ;	
 	end component ;
 	
+	component zero_checker is
+	port(a:in std_logic_vector(15 downto 0);
+	     c: out std_logic);
+	end component ;
+	
 	
 	
 	
 	
 	signal address, data_in, data_out,D1,D2,D3 : std_logic_vector (15 downto 0) ;
-	signal rf_write,mem_write : std_logic := '0' ;
+	signal rf_write,mem_write,c_flag,z_flag,cout_1,cout_2,cout_3 ,zero_out: std_logic := '0' ;
 	signal A1,A2,A3 : std_logic_vector (2 downto 0) ;
 	
-	signal t1,t2,t3,t5,t6,t1n,nand_in1,nand_in2,nand_out , e9_out,next_addr,e9s_out : std_logic_vector (15 downto 0) ;
+	signal instr,t1,t2,t3,t5,t6,t1n,nand_in1,nand_in2,nand_out , e9_out,next_addr,e9s_out,zero_in : std_logic_vector (15 downto 0) ;
 	signal t4 : std_logic_vector(5 downto 0) ;
 	signal alu_parity : std_logic := '0' ;
 	signal  e9_in : std_logic_vector (8 downto 0);
-	signal PC : std_logic_vector (15 downto 0) := "0000000000000000" ;
-
-	type state is (S0,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16,S17,S18,S19,S20,S21,S22,S23,S24,S25,S26,S27,S28,S29,S30,S31,S32,S33,S34,S35,S36,S37,S38,S39,S40);
+	signal PC, next_A3 : std_logic_vector (15 downto 0) := "0000000000000000" ;
 	
-	signal curr_state : state := S0 ;
+
+	type state is (S_fetch,S0,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16,S17,S18,S19,S20,S21,S22,S23,S24,S25,S26,S27,S28,S29,S30,S31,S32,S33,S34,S35,S36,S37,S38,S39,S40);
+	
+	signal curr_state : state := S_fetch ;
 	
 	
 	begin
@@ -85,17 +91,21 @@ architecture load of cpu_load is
 	
 	memory_RF : RF port map ( A1 => A1, A2 => A2, A3 => A3, D3 => D3,D1 => D1, D2 => D2,rf_write => rf_write,clk => clk);
 	
-	ALU : adder_16bit port map (a => t1, b => t2, cin => alu_parity, sum => t3 ) ;
+	ALU : adder_16bit port map (a => t1, b => t2, cin => alu_parity, sum => t3,cout => cout_1 ) ;
 
 	Nander : nand_16bit port map (a=> nand_in1,b=> nand_in2, c=> nand_out) ;
 	
-	ALU_2 : adder_16bit port map (a=> t1n, b => "0000000000000001", cin => '0'  , sum => next_addr ) ;
+	ALU_2 : adder_16bit port map (a=> t1n, b => "0000000000000001", cin => '0'  , sum => next_addr ,cout => cout_2 ) ;
+	
+	ALU_3 : adder_16bit port map (a => t6, b => "0000000000000001" , cin => '0', sum =>  next_A3 , cout => cout_3) ;
 
 	extender : extender_6bit port map ( inp => t4 ,output => t5 ) ;
 	
 	extender_9bit_1 : extender_9bit port map ( a => e9_in, output => e9_out) ;
 	
 	extender_9bit_2 : extender_9bit_signed port map (a => e9_in, output => e9s_out ) ;
+	
+	zero_checker_component : zero_checker port map (a => zero_in, c=> zero_out);
 	
 	t1_out <= t1;
 	t2_out <= t2;
@@ -112,10 +122,13 @@ architecture load of cpu_load is
 	address_out <= address ;
 	data_in_out <= data_in ;
 	data_out_out <= data_out ;
+	instr_out <= instr ;
+	c_flag_out <= c_flag ;
+	z_flag_out <= z_flag ;
 --	data_in <= D1 ;
 	
 --	A2 <= instr(8 downto 6) ;
-	output <= data_out ;
+
 	
 	process (clk,curr_state)
 	
@@ -126,11 +139,11 @@ architecture load of cpu_load is
 ------------opcode map-----------------
 --=========  opcode     opcode name======
 
------------- 0000       Add 
+------------ 0000       Add (ADD, ADC,ADZ)
 
 ------------ 0001       ADI
 
------------- 0010       NDU
+------------ 0010       NDU (NDC, NDZ)
 
 ------------ 0011       LHI
 
@@ -149,25 +162,44 @@ architecture load of cpu_load is
 ------------ 1001       JLR
 	begin 
 	
+		if(curr_state = S_fetch) then
+			
+			address <= PC ;
+			instr <= data_out ;
+			
+			next_state := S0 ;
+			
+			if (falling_edge(clk)) then
+			
+				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
+				mem_write <= '0' ;
+			end if ;
 	
-		if (curr_state = S0) then
+	
+		elsif (curr_state = S0) then
 		
 		---deciding the operation based on opcode
 			
 			if( instr(15 downto 12) = "0000") then
 			
-			-- ADD operation triggered       S1-S3
+			-- ADD operation group triggered       S1-S3
+			
+				
 				next_state := S1 ;
+				
+				t1n <= PC ;         --next_addr will be ready with next PC
 			
 			elsif (instr(15 downto 12) = "0001") then
 			
 				-- ADI operation triggered    S4-S7
-				next_state := S4 ;			
+				next_state := S4 ;
+				t1n <= PC ;			
 			
 			elsif (instr(15 downto 12) = "0010") then
 			
-				-- NDU operations triggered    S17-S19 
-				next_state := S17 ;			
+				-- NDU operations group triggered    S17-S19 
+				next_state := S17 ;	
+				t1n <= PC ;
 
 			elsif (instr (15 downto 12) = "0011") then
 			
@@ -222,17 +254,13 @@ architecture load of cpu_load is
 			
 			else
 				
-				next_state := S0 ;
+				next_state := S_fetch ;
 
 			end if ;
 			
 			
 			
-			if (falling_edge(clk)) then
-			
-				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
-				mem_write <= '0' ;
-			end if ;
+
 			
 			
 			
@@ -241,9 +269,41 @@ architecture load of cpu_load is
 			
 				next_state := S2 ;
 				
-				t1n <= PC ;
+				PC <= next_addr ;
 				
 				--next_addr will be ready with next PC
+				
+				--c_flag checking
+				
+				if (instr(1) = '1') then
+				
+					if(c_flag = '1' ) then
+					
+						next_state := S2 ;
+					
+					else 
+					
+						next_state := S0 ;
+					
+					end if;
+				
+				--z_flag checking
+				
+				elsif(instr(0) = '1') then
+				
+					if(z_flag = '1') then
+						
+						next_state := S2 ;
+					
+					else
+					
+						next_state := S0 ;
+						
+					end if ;
+						
+				
+				
+				end if;
 				
 				
 
@@ -251,7 +311,7 @@ architecture load of cpu_load is
 		elsif (curr_state = S2) then
 		
 				next_state := S3;
-				PC <= next_addr ;
+				
 				A1 <= instr ( 11 downto 9);
 				A2 <= instr ( 8 downto 6) ;
 				t1 <= D1 ;
@@ -259,21 +319,24 @@ architecture load of cpu_load is
 
 				alu_parity <= '0' ;
 				
-				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
-				mem_write <= '0' ;				
+				
 				
 				
 			-- now t1, t2 are ready for bein fed to Alu, t3 will be ready at the next cycle
 			
 		elsif (curr_state = S3 ) then
 		
-				next_state := S0;
+				next_state := S_fetch;
 				D3 <= t3 ;
+				zero_in <= t3 ;
+			-- c_flag update
+			
+				c_flag <= cout_1 ;
 				A3 <= instr (5 downto 3) ;
 				
 				rf_write <= '1' ;
-					
-
+			-- z_flag update		
+				z_flag <= zero_out ;
 --------end of ADD operation
 		
 -------- begining of ADI operation sequence
@@ -282,18 +345,17 @@ architecture load of cpu_load is
 				
 				next_state := S5 ;
 				
-				t1n <= PC ;
+				PC <= next_addr ;
 				
 
 		elsif (curr_state = S5)  then
 		
 				next_state := S6 ;
-				PC <= next_addr ;
+				
 				A1 <= instr(11 downto 9);
 				t1 <= D1 ;
 				t4 <= instr(5 downto 0) ;
-				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
-				mem_write <= '0' ;				
+				
 		elsif (curr_state = S6) then
 		
 				next_state := S7;
@@ -303,11 +365,18 @@ architecture load of cpu_load is
 				--now t3 will be ready with the required value
 		elsif (curr_state = S7) then
 				
-				next_state := S0 ;
+				next_state := S_fetch ;
 				rf_write <= '1' ;
 				A3 <= instr (8 downto 6) ;
 				D3 <= t3 ;
+				zero_in <= t3 ;
+				
+				-- c_flag update
+				c_flag <= cout_1 ;
 
+				-- z_flag update
+				z_flag <= zero_out ;
+				
 --------end of ADI operation 				
 		
 ----begining of load operation sequence		
@@ -329,8 +398,7 @@ architecture load of cpu_load is
 				
 				t1 <= D1 ;
 				
-				rf_write <='0' ; ---------this is required to stop any ongoing writing process from previous instruction 
-				mem_write <= '0' ;
+
 			
 			
 		elsif (curr_state = S10) then
@@ -354,12 +422,16 @@ architecture load of cpu_load is
 			
 			address <= t3 ;
 
-
+			--z_flag update
+			
+			zero_in <= t3 ;
+			
+			z_flag <= zero_out ;
 
 			
 		elsif (curr_state = S12) then
 			--now data_out contains the required address
-			next_state := S0;
+			next_state := S_fetch;
 		
 			rf_write <= '1' ;
 			A3 <= instr( 11 downto 9) ;
@@ -388,7 +460,7 @@ architecture load of cpu_load is
 				
 				A2 <= instr (8 downto 6) ;
 				
-				t6 <= D1 ;
+
 				
 				t1 <= D2 ;	
 
@@ -410,7 +482,7 @@ architecture load of cpu_load is
 
 		elsif (curr_state = S16) then 
 		
-				next_state := S0;
+				next_state := S_fetch;
 				
 				
 				address <= t3 ;
@@ -425,12 +497,33 @@ architecture load of cpu_load is
 		
 				next_state := S18 ;
 				
-				t1n <= PC;
+				PC <= next_addr ;
+				
+				
+			--- carry flag check
+				if(instr(1) = '1') then
+					if(c_flag = '1' )  then
+						next_state := S18;
+					else
+						next_state := S0 ;
+				
+					end if ;
+					
+			--- zero flag check
+				elsif (instr(0) ='1') then
+					if(z_flag ='1') then
+						next_state := S18 ;
+					else
+						next_state := S0 ;
+						
+					end if ;
+			
+				end if ;
 
 		elsif (curr_state = S18) then
 		
 				next_state := S19 ;
-				PC <= next_addr ;
+				
 				A1 <= instr (11 downto 9);
 				A2 <= instr (8 downto 6) ;
 				nand_in1 <= D1;
@@ -441,11 +534,15 @@ architecture load of cpu_load is
 
 		elsif (curr_state = S19) then
 		
-				next_state := S0;
+				next_state := S_fetch;
 				
 				A3 <= instr (5 downto 3) ;
 				D3 <= nand_out ;
 				rf_write <= '1' ;
+				
+				--z_flag update
+				zero_in <= nand_out ;
+				z_flag <= zero_out ;
 			
 -------end of NDU operation			
 
@@ -459,7 +556,7 @@ architecture load of cpu_load is
 
 		elsif (curr_state = S21)  then
 		
-				next_state := S0 ;
+				next_state := S_fetch ;
 				
 				PC <= next_addr ;	
 			
@@ -495,6 +592,11 @@ architecture load of cpu_load is
 			
 			rf_write <= '1';
 			
+			A3 <= "000";
+			D3 <= data_out ;
+			
+			t6(2 downto 0) <= A3 ;
+			
 			mem_write <= '0' ;
 
 		elsif(curr_state = S24) then
@@ -511,64 +613,28 @@ architecture load of cpu_load is
 			
 			next_state := S26 ;
 			
-
+			t6 ( 2 downto 0) <= A3;
+			
 
 			--next_addr will be ready with next address
 		elsif (curr_state = S26) then
 		
-			
+			A3 <= next_A3 ( 2 downto 0) ;
 			
 			address <= next_addr ;
 			
 			D3 <= data_out ;
 			
-			if(falling_edge(clk)) then
-				if ( A3 = "000") then
+			if(A3 = "111") then
+			
+				next_state := S_fetch;
+				
+			else 
 			
 				next_state := S25 ;
-				
-				A3 <= "001" ;
 			
-				elsif (A3 = "001") then
-					
-					A3 <= "010" ;
-					
-					next_state := S25 ;
-				
-				elsif (A3 = "010") then
-					
-					A3 <= "011" ;
-					next_state := S25 ;
-				
-				elsif (A3 = "011" )  then
 			
-					A3 <= "100" ;
-					next_state := S25 ;
-					
-				elsif (A3 = "100" ) then
-				
-					A3 <= "101" ;
-					next_state := S25 ;
-					
-				elsif (A3 = "101" ) then
-				
-					A3 <= "110" ;
-					
-					next_state := S25 ;
-					
-				elsif (A3 = "110" ) then
-	
-					A3 <= "111";
-					
-					next_state := S25;
-				elsif (A3 = "111") then
-				
-					A3 <= "000" ;
-					next_state := S0;
-					
-
-				
-				end if ;
+			
 				
 			end if;
 			
@@ -601,10 +667,11 @@ architecture load of cpu_load is
 		elsif (curr_state = S29) then
 		
 			next_state:= S30 ;
+			data_in <= D2 ;
 			
 			mem_write <= '1' ;
 			
-			data_in <= D2 ;
+			
 			
 			
 			
@@ -614,49 +681,29 @@ architecture load of cpu_load is
 			
 			t1n <= address ;
 			
+			t6(2 downto 0) <= A2 ;
+			
 		elsif (curr_state = S31) then
 		
 			address <= next_addr ;
 			
-			if (A2 = "000") then
-				
-				A2 <= "001";
-				
-				next_state := S30 ;
+			data_in <= D2 ;
 			
-			elsif (A2 = "010") then
+			A2 <= next_A3 (2 downto 0) ;
 			
-				A2 <= "011" ;
-				next_state := S30 ;
+			if (A2 = "111") then
 				
-			elsif (A2 = "011") then
-			
-				A2 <= "100" ;
-				next_state := S30 ;
+				next_state := S_fetch ;
 				
-			elsif (A2 = "100") then
+			else 
 			
-				A2 <= "101" ;
-				next_state := S30 ;
-				
-			elsif (A2 = "101") then
+				next_state := S30;
 			
-				A2 <= "110" ;
-				next_state := S30 ;
-				
-			elsif (A2 = "110" ) then
-			
-				A2 <= "111" ;
-				next_state := S30 ;
-				
-			elsif (A2 = "111" ) then
-			
-				next_state := S0 ;
 				
 			end if;
 			
 			
-			data_in <= D2 ;
+			
 			
 ------ end of store all operation 
 		
@@ -683,7 +730,7 @@ architecture load of cpu_load is
 		elsif ( curr_state = S33 ) then
 	
 			
-			next_state := S0 ;
+			next_state := S_fetch ;
 			
 			if (D1 = D2 ) then
 			
@@ -718,7 +765,7 @@ architecture load of cpu_load is
 	
 	elsif ( curr_state = S35 ) then
 	
-			next_state := S0 ;
+			next_state := S_fetch ;
 			
 			PC <= t3 ;
 			
@@ -742,7 +789,7 @@ architecture load of cpu_load is
 			
 	elsif (curr_state = S37 ) then
 	
-			next_state := S0 ;
+			next_state := S_fetch ;
 			
 			PC <=  D2 ;
 			
