@@ -9,7 +9,7 @@ use ieee.std_logic_unsigned.all;
 
 
 entity adder_16bit is
-	port( a,b : in std_logic_vector (15 downto 0) ; cin : in std_logic ; sum : out std_logic_vector (15 downto 0) );
+	port( a,b : in std_logic_vector (15 downto 0) ; cin : in std_logic ; sum : out std_logic_vector (15 downto 0);cout : out std_logic );
 end entity ;
 
 
@@ -26,6 +26,8 @@ architecture addition of adder_16bit is
 	
 	
 	begin 
+	
+	cout <= carry(15) ;
 	
 	ben(0) <= b(0) xor cin ;
 	ben(1) <= b(1) xor cin ;

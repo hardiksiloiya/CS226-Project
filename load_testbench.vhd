@@ -208,7 +208,7 @@ architecture load_tester of load_testbench is
 
 	clk <= '1' ;
 	
-	instr <= "0000010111000000" ;
+--	instr <= "0000010111000000" ;
 	
 	wait for 50 ns ;
 	
